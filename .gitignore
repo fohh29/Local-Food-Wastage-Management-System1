@@ -1,0 +1,15 @@
+
+# Python Environment (Don't upload the big venv folder)
+venv/
+.venv/
+env/
+
+# Mac System Files
+.DS_Store
+
+# Python Cache (Speeds up execution, not needed on Git)
+__pycache__/
+*.pyc
+
+# Local Databases (Optional - only if you want to keep data private)
+*.db
