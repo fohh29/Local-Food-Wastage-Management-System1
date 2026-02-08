@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import sqlite3
 import plotly.express as px
+from datetime import datetime
 
 # ---------------- PAGE CONFIG ----------------
 st.set_page_config(
@@ -19,6 +20,40 @@ def get_connection():
     return sqlite3.connect(DB_PATH)
 
 conn = get_connection()
+
+# -- CRUD LOGIC FUNCTIONS --
+def add_food_listing(name, f_type, quantity, location, p_id):
+    c = get_connection()
+    cursor = c.cursor()
+    
+    # 1. Manually calculate the next ID
+    cursor.execute("SELECT MAX(Food_ID) FROM food_listings")
+    max_id = cursor.fetchone()[0]
+    new_id = (max_id if max_id else 0) + 1
+    
+    # 2. Get current date
+    current_date = datetime.now().strftime("%m/%d/%Y")
+    
+    query = """
+    INSERT INTO food_listings 
+    (Food_ID, Food_Name, Food_Type, Quantity, Location, Provider_ID, Expiry_Date) 
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    """
+    
+    cursor.execute(query, (new_id, name, f_type, quantity, location, p_id, current_date))
+    
+    c.commit()
+    c.close()
+    
+    return new_id
+
+def update_food_listing(f_id, new_quantity):
+    c = get_connection()
+    cursor = c.cursor()
+    query = "UPDATE food_listings SET Quantity = ? WHERE Food_ID = ?"
+    cursor.execute(query, (new_quantity, f_id))
+    c.commit()
+    c.close()
 
 # ---------------- SIDEBAR ----------------
 st.sidebar.title("Menu")
@@ -274,24 +309,46 @@ elif section == "Food Listings":
         ["All"] + pd.read_sql("SELECT DISTINCT Location FROM food_listings", conn)["Location"].tolist()
     )
 
-    query = "SELECT * FROM food_listings"
+    query = "SELECT * FROM food_listings ORDER BY Food_ID DESC"
     if city_filter != "All":
         query += f" WHERE Location = '{city_filter}'"
 
     df = pd.read_sql(query, conn)
-    st.dataframe(df)
-
-    food_type_count = df["Food_Type"].value_counts().reset_index()
-    food_type_count.columns = ["Food_Type", "Count"]
-
-    fig = px.pie(
-        food_type_count,
-        names="Food_Type",
-        values="Count",
-        title="Food Type Distribution"
-    )
-    st.plotly_chart(fig)
+    st.dataframe(df, use_container_width=True)
     
+    st.divider()
+    
+    # 1. ADD OPTION
+    st.subheader("➕ Add New Food Listing")
+    with st.form("add_form"):
+        col1, col2 = st.columns(2)
+        with col1:
+            f_name = st.text_input("Food Name")
+            f_type = st.selectbox("Food Type", ["Vegetarian", "Non-Vegetarian", "Vegan"])
+        with col2:
+            f_qty = st.number_input("Quantity", min_value=1)
+            f_loc = st.text_input("Location (City)")
+        
+        p_id = st.number_input("Provider ID", min_value=1)
+        
+        if st.form_submit_button("Submit Listing"):
+            new_id = add_food_listing(f_name, f_type, f_qty, f_loc, p_id)
+            st.success(f"Successfully added {f_name}! Assigned Food ID: {new_id}")
+            st.rerun() 
+
+    st.divider()
+
+    # 2. UPDATE OPTION
+    st.subheader("✏️ Update Food Quantity")
+    with st.form("update_form"):
+        u_id = st.number_input("Enter Food ID to Update", min_value=1, key="update_id")
+        u_qty = st.number_input("Enter New Quantity", min_value=1, key="update_qty")
+        
+        if st.form_submit_button("Update Record"):
+            update_food_listing(u_id, u_qty)
+            st.success(f"ID {u_id} updated to quantity {u_qty}")
+            st.rerun()
+
     st.divider()
 
     st.subheader("🗑️ Delete Food Listing")
@@ -309,6 +366,19 @@ elif section == "Food Listings":
         )
         conn.commit()
         st.success(f"Food listing with ID {food_id} deleted successfully!")
+        
+    st.divider()
+        
+    food_type_count = df["Food_Type"].value_counts().reset_index()
+    food_type_count.columns = ["Food_Type", "Count"]
+
+    fig = px.pie(
+        food_type_count,
+        names="Food_Type",
+        values="Count",
+        title="Food Type Distribution"
+    )
+    st.plotly_chart(fig)
 
 
 # ---------------- CLAIMS ANALYSIS ----------------
